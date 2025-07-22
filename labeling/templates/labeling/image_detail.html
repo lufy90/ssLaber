@@ -1,0 +1,184 @@
+{% extends 'labeling/base.html' %}
+
+{% block title %}{{ image.filename }} - Image Details{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'labeling:project_list' %}">Projects</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'labeling:project_detail' image.dataset.project.pk %}">{{ image.dataset.project.name }}</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'labeling:dataset_detail' image.dataset.pk %}">{{ image.dataset.name }}</a></li>
+        <li class="breadcrumb-item active">{{ image.filename }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ image.filename }}</h5>
+                <div>
+                    {% if image.is_annotated %}
+                        <span class="badge bg-success me-2"><i class="fas fa-check"></i> Annotated</span>
+                    {% else %}
+                        <span class="badge bg-warning me-2"><i class="fas fa-clock"></i> Pending</span>
+                    {% endif %}
+                    <a href="{% url 'labeling:annotate_image' image.pk %}" class="btn btn-primary">
+                        <i class="fas fa-tags"></i> {% if image.is_annotated %}Edit Annotations{% else %}Start Annotating{% endif %}
+                    </a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="position-relative">
+                    <img src="{{ image.file.url }}" class="img-fluid w-100" alt="{{ image.filename }}" style="max-height: 600px; object-fit: contain;">
+                    
+                    <!-- Annotation overlay for preview -->
+                    {% if image.annotations.exists %}
+                        <svg class="position-absolute top-0 start-0 w-100 h-100" style="pointer-events: none;">
+                            {% for annotation in image.annotations.all %}
+                                {% if annotation.annotation_type == 'bbox' %}
+                                    <rect x="{{ annotation.x|floatformat:0 }}" 
+                                          y="{{ annotation.y|floatformat:0 }}" 
+                                          width="{{ annotation.width|floatformat:0 }}" 
+                                          height="{{ annotation.height|floatformat:0 }}"
+                                          stroke="{{ annotation.label_category.color }}" 
+                                          stroke-width="2" 
+                                          fill="rgba(255,255,255,0.1)"/>
+                                    <text x="{{ annotation.x|add:5|floatformat:0 }}" 
+                                          y="{{ annotation.y|add:15|floatformat:0 }}" 
+                                          fill="{{ annotation.label_category.color }}" 
+                                          font-size="12" 
+                                          font-weight="bold">
+                                        {{ annotation.label_category.name }}
+                                    </text>
+                                {% endif %}
+                            {% endfor %}
+                        </svg>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Image Information</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li><strong>Filename:</strong> {{ image.filename }}</li>
+                    <li><strong>Dimensions:</strong> {{ image.width }} × {{ image.height }}px</li>
+                    <li><strong>Size:</strong> {{ image.size|filesizeformat }}</li>
+                    <li><strong>Dataset:</strong> <a href="{% url 'labeling:dataset_detail' image.dataset.pk %}">{{ image.dataset.name }}</a></li>
+                    <li><strong>Project:</strong> <a href="{% url 'labeling:project_detail' image.dataset.project.pk %}">{{ image.dataset.project.name }}</a></li>
+                    <li><strong>Uploaded:</strong> {{ image.uploaded_at|date:"M d, Y H:i" }}</li>
+                    {% if image.sequence_number %}
+                        <li><strong>Sequence:</strong> #{{ image.sequence_number }}</li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+
+        {% if image.annotations.exists %}
+            <div class="card mt-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Annotations</h5>
+                    <span class="badge bg-secondary">{{ image.annotations.count }}</span>
+                </div>
+                <div class="card-body">
+                    {% for annotation in image.annotations.all %}
+                        <div class="d-flex align-items-center justify-content-between p-2 border rounded mb-2">
+                            <div class="d-flex align-items-center">
+                                <span class="label-color me-2" style="background-color: {{ annotation.label_category.color }}"></span>
+                                <div>
+                                    <strong>{{ annotation.label_category.name }}</strong>
+                                    <small class="text-muted d-block">{{ annotation.get_annotation_type_display }}</small>
+                                    {% if annotation.confidence %}
+                                        <small class="text-muted d-block">Confidence: {{ annotation.confidence|floatformat:2 }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="text-muted small">
+                                {{ annotation.annotator.username }}
+                            </div>
+                        </div>
+                        {% if annotation.notes %}
+                            <div class="small text-muted mb-2 ps-4">
+                                <i class="fas fa-comment"></i> {{ annotation.notes }}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{% url 'labeling:annotate_image' image.pk %}" class="btn btn-primary">
+                        <i class="fas fa-tags"></i> {% if image.is_annotated %}Edit Annotations{% else %}Start Annotating{% endif %}
+                    </a>
+                    <a href="{{ image.file.url }}" target="_blank" class="btn btn-outline-secondary">
+                        <i class="fas fa-external-link-alt"></i> Open Full Size
+                    </a>
+                    <a href="{{ image.file.url }}" download="{{ image.filename }}" class="btn btn-outline-success">
+                        <i class="fas fa-download"></i> Download Image
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation to next/previous images -->
+        {% if image.dataset.images.count > 1 %}
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Navigation</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <a href="#" class="btn btn-outline-primary btn-sm" onclick="navigateImage('prev')">
+                            <i class="fas fa-arrow-left"></i> Previous
+                        </a>
+                        <span class="align-self-center small text-muted">
+                            Image {{ forloop.counter0|add:1 }} of {{ image.dataset.images.count }}
+                        </span>
+                        <a href="#" class="btn btn-outline-primary btn-sm" onclick="navigateImage('next')">
+                            Next <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function navigateImage(direction) {
+    // TODO: Implement navigation between images in dataset
+    alert('Image navigation feature coming soon!');
+}
+
+// Handle image loading
+document.addEventListener('DOMContentLoaded', function() {
+    const img = document.querySelector('.card-body img');
+    if (img) {
+        img.addEventListener('load', function() {
+            // Update SVG overlay dimensions if needed
+            const svg = document.querySelector('svg');
+            if (svg) {
+                const imgRect = img.getBoundingClientRect();
+                svg.setAttribute('viewBox', `0 0 ${img.naturalWidth} ${img.naturalHeight}`);
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends 'labeling/base.html' %}
+
+{% block title %}Projects - Image Labeling Tool{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>My Projects</h1>
+    <a href="{% url 'labeling:project_create' %}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> New Project
+    </a>
+</div>
+
+{% if projects %}
+    <div class="row">
+        {% for project in projects %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ project.name }}</h5>
+                        <p class="card-text">{{ project.description|truncatewords:20|default:"No description" }}</p>
+                        <p class="card-text">
+                            <small class="text-muted">
+                                Created: {{ project.created_at|date:"M d, Y" }}
+                            </small>
+                        </p>
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'labeling:project_detail' project.pk %}" class="btn btn-primary">
+                                View Project
+                            </a>
+                            <div class="dropdown">
+                                <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{% url 'labeling:project_edit' project.pk %}">Edit</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'labeling:dataset_create' project.pk %}">Add Dataset</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="text-center py-5">
+        <h3>No projects yet</h3>
+        <p class="text-muted">Create your first project to start labeling images.</p>
+        <a href="{% url 'labeling:project_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Create Project
+        </a>
+    </div>
+{% endif %}
+{% endblock %}

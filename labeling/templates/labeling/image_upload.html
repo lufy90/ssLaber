@@ -1,0 +1,148 @@
+{% extends 'labeling/base.html' %}
+
+{% block title %}Upload Images - {{ dataset.name }}{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'labeling:project_list' %}">Projects</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'labeling:project_detail' dataset.project.pk %}">{{ dataset.project.name }}</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'labeling:dataset_detail' dataset.pk %}">{{ dataset.name }}</a></li>
+        <li class="breadcrumb-item active">Upload Images</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3>Upload Images to {{ dataset.name }}</h3>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data" id="upload-form">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="{{ form.images.id_for_label }}" class="form-label">{{ form.images.label }}</label>
+                        {{ form.images }}
+                        {% if form.images.help_text %}
+                            <div class="form-text">{{ form.images.help_text }}</div>
+                        {% endif %}
+                        {% if form.images.errors %}
+                            <div class="text-danger">{{ form.images.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="alert alert-info">
+                            <h6><i class="fas fa-info-circle"></i> Supported Formats</h6>
+                            <p class="mb-0">JPG, JPEG, PNG, BMP, TIFF files are supported. You can select multiple files at once.</p>
+                        </div>
+                    </div>
+
+                    <div id="preview-container" class="mb-3" style="display: none;">
+                        <h6>Selected Files:</h6>
+                        <div id="file-preview" class="row">
+                            <!-- File previews will be shown here -->
+                        </div>
+                    </div>
+
+                    <div class="progress mb-3" style="display: none;" id="upload-progress">
+                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'labeling:dataset_detail' dataset.pk %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Dataset
+                        </a>
+                        <button type="submit" class="btn btn-primary" id="upload-btn">
+                            <i class="fas fa-upload"></i> Upload Images
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('{{ form.images.id_for_label }}');
+    const previewContainer = document.getElementById('preview-container');
+    const filePreview = document.getElementById('file-preview');
+    const uploadForm = document.getElementById('upload-form');
+    const uploadBtn = document.getElementById('upload-btn');
+    const progressBar = document.getElementById('upload-progress');
+
+    fileInput.addEventListener('change', function(e) {
+        const files = Array.from(e.target.files);
+        
+        if (files.length > 0) {
+            previewContainer.style.display = 'block';
+            filePreview.innerHTML = '';
+            
+            files.forEach((file, index) => {
+                const col = document.createElement('div');
+                col.className = 'col-md-3 col-sm-4 mb-3';
+                
+                const card = document.createElement('div');
+                card.className = 'card';
+                
+                if (file.type.startsWith('image/')) {
+                    const img = document.createElement('img');
+                    img.className = 'card-img-top';
+                    img.style.height = '120px';
+                    img.style.objectFit = 'cover';
+                    img.src = URL.createObjectURL(file);
+                    card.appendChild(img);
+                }
+                
+                const cardBody = document.createElement('div');
+                cardBody.className = 'card-body p-2';
+                
+                const fileName = document.createElement('h6');
+                fileName.className = 'card-title text-truncate small';
+                fileName.textContent = file.name;
+                fileName.title = file.name;
+                
+                const fileSize = document.createElement('p');
+                fileSize.className = 'card-text small text-muted mb-0';
+                fileSize.textContent = formatFileSize(file.size);
+                
+                cardBody.appendChild(fileName);
+                cardBody.appendChild(fileSize);
+                card.appendChild(cardBody);
+                col.appendChild(card);
+                filePreview.appendChild(col);
+            });
+        } else {
+            previewContainer.style.display = 'none';
+        }
+    });
+
+    uploadForm.addEventListener('submit', function(e) {
+        if (fileInput.files.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one image file.');
+            return;
+        }
+        
+        // Show progress bar
+        progressBar.style.display = 'block';
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+    });
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+});
+</script>
+{% endblock %}

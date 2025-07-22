@@ -1,0 +1,504 @@
+{% extends 'labeling/base.html' %}
+
+{% block title %}Annotate - {{ image.filename }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .annotation-container {
+        position: relative;
+        display: inline-block;
+    }
+    
+    .annotation-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+    }
+    
+    .annotation-rect {
+        stroke-width: 2;
+        fill: rgba(255, 255, 255, 0.1);
+        stroke: #ff0000;
+    }
+    
+    .toolbar {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    
+    .label-button {
+        margin: 2px;
+    }
+    
+    #target-image {
+        cursor: crosshair;
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+    }
+    
+    #target-image.drawing {
+        cursor: crosshair;
+    }
+    
+    .preview-annotation {
+        stroke-width: 2;
+        stroke-dasharray: 5,5;
+        fill: rgba(255, 255, 255, 0.1);
+    }
+    
+    .tool-instruction {
+        font-size: 0.9em;
+        color: #6c757d;
+        margin-top: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'labeling:project_list' %}">Projects</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'labeling:project_detail' image.dataset.project.pk %}">{{ image.dataset.project.name }}</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'labeling:dataset_detail' image.dataset.pk %}">{{ image.dataset.name }}</a></li>
+        <li class="breadcrumb-item active">{{ image.filename }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-9">
+        <div class="toolbar">
+            <h5>Annotation Tools</h5>
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-outline-primary active" id="bbox-tool" data-tool="bbox">
+                    <i class="fas fa-square"></i> Bounding Box
+                </button>
+                <button type="button" class="btn btn-outline-primary" id="polygon-tool" data-tool="polygon">
+                    <i class="fas fa-draw-polygon"></i> Polygon
+                </button>
+            </div>
+            <div class="ms-3 d-inline-block">
+                <label>Labels:</label>
+                {% for label in labels %}
+                    <button type="button" class="btn btn-sm label-button" 
+                            data-label-id="{{ label.id }}" 
+                            data-label-name="{{ label.name }}"
+                            style="background-color: {{ label.color }}; color: white;">
+                        {{ label.name }}
+                    </button>
+                {% endfor %}
+            </div>
+            
+            <div class="tool-instruction mt-2">
+                <div id="bbox-instruction" class="instruction-text">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Bounding Box:</strong> Click and drag to create a rectangular annotation. Start from one corner and drag to the opposite corner.
+                </div>
+                <div id="polygon-instruction" class="instruction-text" style="display: none;">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Polygon:</strong> Click multiple points to create a polygon shape. Double-click to finish.
+                </div>
+            </div>
+        </div>
+
+        <div class="annotation-container">
+            <img id="target-image" src="{{ image.file.url }}" class="img-fluid" alt="{{ image.filename }}">
+            <svg class="annotation-overlay" width="100%" height="100%">
+                <!-- Annotations will be drawn here -->
+            </svg>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="sidebar">
+            <h5>Image Info</h5>
+            <ul class="list-unstyled">
+                <li><strong>Filename:</strong> {{ image.filename }}</li>
+                <li><strong>Size:</strong> {{ image.width }}x{{ image.height }}</li>
+                <li><strong>Dataset:</strong> {{ image.dataset.name }}</li>
+            </ul>
+
+            <h5 class="mt-4">Annotations <span class="badge bg-secondary" id="annotation-count">0</span></h5>
+            <div id="annotation-list" class="mt-3">
+                <!-- Annotation list will be populated here -->
+            </div>
+
+            <div class="mt-4">
+                <button class="btn btn-success btn-sm" id="save-annotations">
+                    <i class="fas fa-save"></i> Save
+                </button>
+                <button class="btn btn-danger btn-sm" id="clear-all">
+                    <i class="fas fa-trash"></i> Clear All
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+class AnnotationTool {
+    constructor() {
+        this.currentTool = 'bbox';
+        this.currentLabel = null;
+        this.isDrawing = false;
+        this.startPoint = null;
+        this.annotations = {{ annotations_json|safe }};
+        this.imageElement = document.getElementById('target-image');
+        this.svgElement = document.querySelector('.annotation-overlay');
+        
+        this.initializeEvents();
+        this.renderAnnotations();
+        this.updateAnnotationCount();
+    }
+    
+    initializeEvents() {
+        // Tool selection
+        document.querySelectorAll('[data-tool]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.currentTool = e.target.dataset.tool;
+                this.updateToolButtons();
+            });
+        });
+        
+        // Label selection
+        document.querySelectorAll('[data-label-id]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.currentLabel = {
+                    id: e.target.dataset.labelId,
+                    name: e.target.dataset.labelName,
+                    color: e.target.style.backgroundColor
+                };
+                this.updateLabelButtons(e.target);
+            });
+        });
+        
+        // Canvas events
+        this.imageElement.addEventListener('mousedown', this.onMouseDown.bind(this));
+        this.imageElement.addEventListener('mousemove', this.onMouseMove.bind(this));
+        this.imageElement.addEventListener('mouseup', this.onMouseUp.bind(this));
+        
+        // Control buttons
+        document.getElementById('save-annotations').addEventListener('click', this.saveAnnotations.bind(this));
+        document.getElementById('clear-all').addEventListener('click', this.clearAll.bind(this));
+        
+        // Update SVG size when image loads
+        this.imageElement.addEventListener('load', () => {
+            this.updateSVGSize();
+        });
+        
+        if (this.imageElement.complete) {
+            this.updateSVGSize();
+        }
+    }
+    
+    updateSVGSize() {
+        const rect = this.imageElement.getBoundingClientRect();
+        this.svgElement.style.width = rect.width + 'px';
+        this.svgElement.style.height = rect.height + 'px';
+        this.svgElement.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
+    }
+    
+    updateToolButtons() {
+        document.querySelectorAll('[data-tool]').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-tool="${this.currentTool}"]`).classList.add('active');
+        
+        // Show/hide tool instructions
+        document.querySelectorAll('.instruction-text').forEach(instruction => {
+            instruction.style.display = 'none';
+        });
+        document.getElementById(`${this.currentTool}-instruction`).style.display = 'block';
+        
+        // Update cursor
+        if (this.currentTool === 'bbox') {
+            this.imageElement.style.cursor = 'crosshair';
+        }
+    }
+    
+    updateLabelButtons(activeBtn) {
+        document.querySelectorAll('[data-label-id]').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        activeBtn.classList.add('active');
+    }
+    
+    onMouseDown(e) {
+        if (!this.currentLabel) {
+            alert('Please select a label first');
+            return;
+        }
+        
+        if (this.currentTool === 'bbox') {
+            this.isDrawing = true;
+            const rect = this.imageElement.getBoundingClientRect();
+            this.startPoint = {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+            
+            // Prevent default to avoid image dragging
+            e.preventDefault();
+        }
+    }
+    
+    onMouseMove(e) {
+        if (!this.isDrawing || this.currentTool !== 'bbox') return;
+        
+        // Visual feedback while drawing
+        this.drawPreview(e);
+        e.preventDefault();
+    }
+    
+    onMouseUp(e) {
+        if (!this.isDrawing || this.currentTool !== 'bbox') return;
+        
+        const rect = this.imageElement.getBoundingClientRect();
+        const endPoint = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+        
+        // Check if the drag distance is meaningful (at least 5 pixels)
+        const minDistance = 5;
+        const dragDistance = Math.sqrt(
+            Math.pow(endPoint.x - this.startPoint.x, 2) + 
+            Math.pow(endPoint.y - this.startPoint.y, 2)
+        );
+        
+        if (dragDistance >= minDistance) {
+            this.createAnnotation(endPoint);
+        } else {
+            // Too small drag, show message
+            console.log('Drag distance too small, bbox not created');
+        }
+        
+        this.isDrawing = false;
+        this.clearPreview();
+        e.preventDefault();
+    }
+    
+    drawPreview(e) {
+        // Remove existing preview
+        this.clearPreview();
+        
+        if (this.currentTool === 'bbox') {
+            const rect = this.imageElement.getBoundingClientRect();
+            const currentPoint = {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+            
+            const minX = Math.min(this.startPoint.x, currentPoint.x);
+            const minY = Math.min(this.startPoint.y, currentPoint.y);
+            const width = Math.abs(currentPoint.x - this.startPoint.x);
+            const height = Math.abs(currentPoint.y - this.startPoint.y);
+            
+            // Only show preview if drag is meaningful
+            if (width > 2 && height > 2) {
+                const rectElement = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rectElement.classList.add('preview-annotation');
+                rectElement.setAttribute('x', minX);
+                rectElement.setAttribute('y', minY);
+                rectElement.setAttribute('width', width);
+                rectElement.setAttribute('height', height);
+                rectElement.setAttribute('stroke', this.currentLabel.color);
+                rectElement.setAttribute('stroke-width', '2');
+                rectElement.setAttribute('stroke-dasharray', '8,4');
+                rectElement.setAttribute('fill', 'rgba(255, 255, 255, 0.1)');
+                rectElement.setAttribute('opacity', '0.8');
+                
+                this.svgElement.appendChild(rectElement);
+                
+                // Add size info text
+                const textElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                textElement.classList.add('preview-annotation');
+                textElement.setAttribute('x', minX + 5);
+                textElement.setAttribute('y', minY + 18);
+                textElement.setAttribute('fill', this.currentLabel.color);
+                textElement.setAttribute('font-size', '12');
+                textElement.setAttribute('font-weight', 'bold');
+                textElement.setAttribute('text-shadow', '1px 1px 1px rgba(0,0,0,0.7)');
+                textElement.textContent = `${Math.round(width)} × ${Math.round(height)}`;
+                
+                this.svgElement.appendChild(textElement);
+            }
+        }
+    }
+    
+    clearPreview() {
+        document.querySelectorAll('.preview-annotation').forEach(el => el.remove());
+    }
+    
+    createAnnotation(endPoint) {
+        const imageRect = this.imageElement.getBoundingClientRect();
+        const scaleX = this.imageElement.naturalWidth / imageRect.width;
+        const scaleY = this.imageElement.naturalHeight / imageRect.height;
+        
+        // Calculate bounding box coordinates
+        const minX = Math.min(this.startPoint.x, endPoint.x);
+        const minY = Math.min(this.startPoint.y, endPoint.y);
+        const maxX = Math.max(this.startPoint.x, endPoint.x);
+        const maxY = Math.max(this.startPoint.y, endPoint.y);
+        
+        // Ensure the bounding box is within image bounds
+        const boundedMinX = Math.max(0, minX);
+        const boundedMinY = Math.max(0, minY);
+        const boundedMaxX = Math.min(imageRect.width, maxX);
+        const boundedMaxY = Math.min(imageRect.height, maxY);
+        
+        const annotation = {
+            id: 'temp_' + Date.now(),
+            label_id: this.currentLabel.id,
+            label_name: this.currentLabel.name,
+            type: this.currentTool,
+            color: this.currentLabel.color,
+            x: boundedMinX * scaleX,
+            y: boundedMinY * scaleY,
+            width: (boundedMaxX - boundedMinX) * scaleX,
+            height: (boundedMaxY - boundedMinY) * scaleY
+        };
+        
+        // Only add annotation if it has meaningful size
+        if (annotation.width > 0 && annotation.height > 0) {
+            this.annotations.push(annotation);
+            this.renderAnnotations();
+            this.updateAnnotationCount();
+            
+            console.log(`Created bounding box: ${Math.round(annotation.width)}x${Math.round(annotation.height)} at (${Math.round(annotation.x)}, ${Math.round(annotation.y)})`);
+        }
+    }
+    
+    renderAnnotations() {
+        // Clear existing annotations
+        this.svgElement.querySelectorAll('.annotation').forEach(el => el.remove());
+        
+        const imageRect = this.imageElement.getBoundingClientRect();
+        const scaleX = imageRect.width / this.imageElement.naturalWidth;
+        const scaleY = imageRect.height / this.imageElement.naturalHeight;
+        
+        this.annotations.forEach((annotation, index) => {
+            if (annotation.type === 'bbox') {
+                const rectElement = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rectElement.classList.add('annotation');
+                rectElement.setAttribute('data-annotation-id', annotation.id);
+                rectElement.setAttribute('x', annotation.x * scaleX);
+                rectElement.setAttribute('y', annotation.y * scaleY);
+                rectElement.setAttribute('width', annotation.width * scaleX);
+                rectElement.setAttribute('height', annotation.height * scaleY);
+                rectElement.setAttribute('stroke', annotation.color || '#ff0000');
+                rectElement.setAttribute('stroke-width', '2');
+                rectElement.setAttribute('fill', 'rgba(255, 255, 255, 0.1)');
+                
+                rectElement.addEventListener('click', () => {
+                    this.selectAnnotation(index);
+                });
+                
+                this.svgElement.appendChild(rectElement);
+            }
+        });
+        
+        this.updateAnnotationList();
+    }
+    
+    updateAnnotationList() {
+        const listElement = document.getElementById('annotation-list');
+        listElement.innerHTML = '';
+        
+        this.annotations.forEach((annotation, index) => {
+            const item = document.createElement('div');
+            item.className = 'annotation-item p-2 border rounded mb-2';
+            item.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>
+                        <span class="label-color" style="background-color: ${annotation.color}"></span>
+                        ${annotation.label_name}
+                    </span>
+                    <button class="btn btn-sm btn-danger" onclick="annotationTool.removeAnnotation(${index})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+            listElement.appendChild(item);
+        });
+    }
+    
+    selectAnnotation(index) {
+        // Highlight selected annotation
+        console.log('Selected annotation:', this.annotations[index]);
+    }
+    
+    removeAnnotation(index) {
+        this.annotations.splice(index, 1);
+        this.renderAnnotations();
+        this.updateAnnotationCount();
+    }
+    
+    updateAnnotationCount() {
+        document.getElementById('annotation-count').textContent = this.annotations.length;
+    }
+    
+    saveAnnotations() {
+        // Save annotations to server
+        this.annotations.forEach(annotation => {
+            if (annotation.id.toString().startsWith('temp_')) {
+                // Create new annotation
+                fetch('{% url "labeling:annotation_api" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({
+                        image_id: '{{ image.id }}',
+                        label_id: annotation.label_id,
+                        type: annotation.type,
+                        x: annotation.x,
+                        y: annotation.y,
+                        width: annotation.width,
+                        height: annotation.height
+                    })
+                }).then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        annotation.id = data.id;
+                    }
+                });
+            }
+        });
+        
+        alert('Annotations saved successfully!');
+    }
+    
+    clearAll() {
+        if (confirm('Are you sure you want to clear all annotations?')) {
+            this.annotations = [];
+            this.renderAnnotations();
+            this.updateAnnotationCount();
+        }
+    }
+}
+
+// Initialize the annotation tool when the page loads
+let annotationTool;
+window.addEventListener('load', () => {
+    annotationTool = new AnnotationTool();
+});
+
+// Handle window resize
+window.addEventListener('resize', () => {
+    if (annotationTool) {
+        annotationTool.updateSVGSize();
+        annotationTool.renderAnnotations();
+    }
+});
+</script>
+{% endblock %}

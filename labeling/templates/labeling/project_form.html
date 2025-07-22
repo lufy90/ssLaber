@@ -1,0 +1,51 @@
+{% extends 'labeling/base.html' %}
+
+{% block title %}{% if form.instance.pk %}Edit{% else %}Create{% endif %} Project{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'labeling:project_list' %}">Projects</a></li>
+        <li class="breadcrumb-item active">{% if form.instance.pk %}Edit {{ form.instance.name }}{% else %}Create Project{% endif %}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3>{% if form.instance.pk %}Edit Project{% else %}Create New Project{% endif %}</h3>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
+                        {{ form.name }}
+                        {% if form.name.errors %}
+                            <div class="text-danger">{{ form.name.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.description.id_for_label }}" class="form-label">{{ form.description.label }}</label>
+                        {{ form.description }}
+                        {% if form.description.errors %}
+                            <div class="text-danger">{{ form.description.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'labeling:project_list' %}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            {% if form.instance.pk %}Update{% else %}Create{% endif %} Project
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

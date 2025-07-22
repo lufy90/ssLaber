@@ -1,0 +1,118 @@
+{% extends 'labeling/base.html' %}
+
+{% block title %}{{ project.name }} - Project Details{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'labeling:project_list' %}">Projects</a></li>
+        <li class="breadcrumb-item active">{{ project.name }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>{{ project.name }}</h1>
+    <div>
+        <a href="{% url 'labeling:project_edit' project.pk %}" class="btn btn-outline-primary">
+            <i class="fas fa-edit"></i> Edit Project
+        </a>
+        <a href="{% url 'labeling:dataset_create' project.pk %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> New Dataset
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        {% if project.description %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Description</h5>
+                    <p class="card-text">{{ project.description|linebreaks }}</p>
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Datasets</h5>
+                <span class="badge bg-secondary">{{ project.datasets.count }}</span>
+            </div>
+            <div class="card-body">
+                {% if project.datasets.exists %}
+                    <div class="row">
+                        {% for dataset in project.datasets.all %}
+                            <div class="col-md-6 mb-3">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">{{ dataset.name }}</h6>
+                                        <p class="card-text text-muted">{{ dataset.get_dataset_type_display }}</p>
+                                        <p class="card-text">
+                                            <small class="text-muted">
+                                                {{ dataset.images.count }} images
+                                                • Created {{ dataset.created_at|date:"M d" }}
+                                            </small>
+                                        </p>
+                                        <a href="{% url 'labeling:dataset_detail' dataset.pk %}" class="btn btn-sm btn-primary">
+                                            View Dataset
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <p class="text-muted">No datasets yet. Create your first dataset to start labeling.</p>
+                        <a href="{% url 'labeling:dataset_create' project.pk %}" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Create Dataset
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Label Categories</h5>
+            </div>
+            <div class="card-body">
+                {% if project.labels.exists %}
+                    {% for label in project.labels.all %}
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="label-color me-2" style="background-color: {{ label.color }}"></span>
+                            <span>{{ label.name }}</span>
+                            <small class="text-muted ms-auto">{{ label.get_annotation_type_display }}</small>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No labels defined yet.</p>
+                    <small class="text-muted">Labels can be managed through the admin interface.</small>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Project Stats</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li><strong>Datasets:</strong> {{ project.datasets.count }}</li>
+                    <li><strong>Total Images:</strong> 
+                        {% with total_images=project.datasets.all|length %}
+                            {{ total_images }}
+                        {% endwith %}
+                    </li>
+                    <li><strong>Created:</strong> {{ project.created_at|date:"F j, Y" }}</li>
+                    <li><strong>Updated:</strong> {{ project.updated_at|date:"F j, Y" }}</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

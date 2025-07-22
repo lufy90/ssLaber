@@ -1,0 +1,320 @@
+{% extends 'labeling/base.html' %}
+
+{% block title %}{{ dataset.name }} - Dataset Details{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'labeling:project_list' %}">Projects</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'labeling:project_detail' dataset.project.pk %}">{{ dataset.project.name }}</a></li>
+        <li class="breadcrumb-item active">{{ dataset.name }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>{{ dataset.name }}</h1>
+    <div>
+        <a href="{% url 'labeling:dataset_edit' dataset.pk %}" class="btn btn-outline-primary">
+            <i class="fas fa-edit"></i> Edit Dataset
+        </a>
+        <a href="{% url 'labeling:image_upload' dataset.pk %}" class="btn btn-success">
+            <i class="fas fa-upload"></i> Upload Images
+        </a>
+        <div class="btn-group">
+            <button type="button" class="btn btn-info dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="fas fa-download"></i> Export
+            </button>
+            <ul class="dropdown-menu">
+                <li><h6 class="dropdown-header">Annotation Formats</h6></li>
+                <li><a class="dropdown-item" href="{% url 'labeling:export_dataset' dataset.pk 'coco' %}">
+                    <i class="fas fa-file-code"></i> COCO Format (.json)
+                </a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">YOLO Format</h6></li>
+                <li><a class="dropdown-item" href="{% url 'labeling:export_dataset' dataset.pk 'yolo' %}">
+                    <i class="fas fa-tags"></i> YOLO Labels Only (.zip)
+                </a></li>
+                <li><a class="dropdown-item" href="{% url 'labeling:export_dataset' dataset.pk 'yolo' %}?include_images=true">
+                    <i class="fas fa-images"></i> YOLO with Images (.zip)
+                </a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-9">
+        {% if dataset.description %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Description</h5>
+                    <p class="card-text">{{ dataset.description|linebreaks }}</p>
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Images</h5>
+                <div>
+                    <span class="badge bg-secondary me-2">{{ dataset.images.count }} total</span>
+                    <span class="badge bg-success" id="annotated-count">0 annotated</span>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if dataset.images.exists %}
+                    <div class="row">
+                        {% for image in dataset.images.all %}
+                            <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                                <div class="card h-100">
+                                    <div class="position-relative">
+                                        <img src="{{ image.file.url }}" class="card-img-top image-thumbnail" alt="{{ image.filename }}" 
+                                             style="height: 200px; object-fit: cover;" 
+                                             data-image-id="{{ image.id }}"
+                                             data-image-width="{{ image.width }}"
+                                             data-image-height="{{ image.height }}">
+                                        
+                                        <!-- Annotation overlay -->
+                                        {% if image.annotations.exists %}
+                                            <svg class="position-absolute top-0 start-0 w-100 h-100 annotation-overlay" 
+                                                 style="pointer-events: none;" 
+                                                 data-image-id="{{ image.id }}">
+                                                {% for annotation in image.annotations.all %}
+                                                    {% if annotation.annotation_type == 'bbox' %}
+                                                        <rect class="annotation-rect"
+                                                              data-x="{{ annotation.x }}" 
+                                                              data-y="{{ annotation.y }}" 
+                                                              data-width="{{ annotation.width }}" 
+                                                              data-height="{{ annotation.height }}"
+                                                              stroke="{{ annotation.label_category.color }}" 
+                                                              stroke-width="2" 
+                                                              fill="transparent"
+                                                              opacity="0.8"/>
+                                                        <text class="annotation-label"
+                                                              data-x="{{ annotation.x }}" 
+                                                              data-y="{{ annotation.y }}"
+                                                              fill="{{ annotation.label_category.color }}" 
+                                                              font-size="10" 
+                                                              font-weight="bold"
+                                                              dominant-baseline="hanging">
+                                                            {{ annotation.label_category.name }}
+                                                        </text>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </svg>
+                                        {% endif %}
+                                        
+                                        {% if image.is_annotated %}
+                                            <span class="position-absolute top-0 end-0 badge bg-success m-2">
+                                                <i class="fas fa-check"></i> Annotated
+                                            </span>
+                                        {% else %}
+                                            <span class="position-absolute top-0 end-0 badge bg-warning m-2">
+                                                <i class="fas fa-clock"></i> Pending
+                                            </span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="card-body p-2">
+                                        <h6 class="card-title text-truncate" title="{{ image.filename }}">{{ image.filename }}</h6>
+                                        <p class="card-text small text-muted mb-2">
+                                            {{ image.width }}×{{ image.height }}px
+                                            {% if image.annotations.exists %}
+                                                <br><i class="fas fa-tags"></i> {{ image.annotations.count }} annotation{{ image.annotations.count|pluralize }}
+                                            {% endif %}
+                                        </p>
+                                        <div class="d-flex justify-content-between">
+                                            <a href="{% url 'labeling:image_detail' image.pk %}" class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                            <a href="{% url 'labeling:annotate_image' image.pk %}" class="btn btn-sm btn-primary">
+                                                <i class="fas fa-tags"></i> {% if image.is_annotated %}Edit{% else %}Annotate{% endif %}
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    
+                    {% if dataset.images.count > 12 %}
+                        <div class="text-center mt-4">
+                            <p class="text-muted">Showing first 12 images. <a href="#" onclick="loadMoreImages()">Load more...</a></p>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-images fa-3x text-muted mb-3"></i>
+                        <h4>No images yet</h4>
+                        <p class="text-muted">Upload some images to start annotating.</p>
+                        <a href="{% url 'labeling:image_upload' dataset.pk %}" class="btn btn-primary">
+                            <i class="fas fa-upload"></i> Upload Images
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Dataset Info</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li><strong>Type:</strong> {{ dataset.get_dataset_type_display }}</li>
+                    <li><strong>Project:</strong> {{ dataset.project.name }}</li>
+                    <li><strong>Images:</strong> {{ dataset.images.count }}</li>
+                    <li><strong>Annotated:</strong> <span id="annotated-info">0</span>/{{ dataset.images.count }}</li>
+                    <li><strong>Created:</strong> {{ dataset.created_at|date:"M d, Y" }}</li>
+                    <li><strong>Updated:</strong> {{ dataset.updated_at|date:"M d, Y" }}</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Available Labels</h5>
+            </div>
+            <div class="card-body">
+                {% for label in dataset.project.labels.all %}
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="label-color me-2" style="background-color: {{ label.color }}"></span>
+                        <span>{{ label.name }}</span>
+                        <small class="text-muted ms-auto">{{ label.get_annotation_type_display }}</small>
+                    </div>
+                {% empty %}
+                    <p class="text-muted">No labels defined yet.</p>
+                    <small class="text-muted">Add labels through the admin interface to start annotating.</small>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{% url 'labeling:image_upload' dataset.pk %}" class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-upload"></i> Upload More Images
+                    </a>
+                    {% for image in dataset.images.all %}
+                        {% if not image.is_annotated %}
+                            <a href="{% url 'labeling:annotate_image' image.pk %}" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-play"></i> Start Annotating
+                            </a>
+                            {% comment %}This will only show the first one due to the structure{% endcomment %}
+                        {% endif %}
+                    {% empty %}
+                        {% comment %}No images in dataset{% endcomment %}
+                    {% endfor %}
+                    <a href="/admin/labeling/labelcategory/?project__id={{ dataset.project.pk }}" class="btn btn-outline-info btn-sm" target="_blank">
+                        <i class="fas fa-tags"></i> Manage Labels
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Count annotated images
+    let annotatedCount = 0;
+    {% for image in dataset.images.all %}
+        {% if image.is_annotated %}
+            annotatedCount++;
+        {% endif %}
+    {% endfor %}
+    
+    document.getElementById('annotated-count').textContent = annotatedCount + ' annotated';
+    document.getElementById('annotated-info').textContent = annotatedCount;
+    
+    // Hide duplicate start annotating buttons (keep only the first one)
+    const startButtons = document.querySelectorAll('a[href*="/annotate/"]');
+    for (let i = 1; i < startButtons.length; i++) {
+        if (startButtons[i].textContent.includes('Start Annotating')) {
+            startButtons[i].style.display = 'none';
+        }
+    }
+    
+    // Scale annotations to fit thumbnails
+    scaleAnnotationOverlays();
+    
+    // Re-scale on window resize
+    window.addEventListener('resize', scaleAnnotationOverlays);
+});
+
+function scaleAnnotationOverlays() {
+    document.querySelectorAll('.image-thumbnail').forEach(img => {
+        if (img.complete) {
+            scaleAnnotationsForImage(img);
+        } else {
+            img.addEventListener('load', () => scaleAnnotationsForImage(img));
+        }
+    });
+}
+
+function scaleAnnotationsForImage(img) {
+    const imageId = img.getAttribute('data-image-id');
+    const originalWidth = parseInt(img.getAttribute('data-image-width'));
+    const originalHeight = parseInt(img.getAttribute('data-image-height'));
+    
+    const svg = document.querySelector(`svg[data-image-id="${imageId}"]`);
+    if (!svg) return;
+    
+    const imgRect = img.getBoundingClientRect();
+    const displayWidth = imgRect.width;
+    const displayHeight = imgRect.height;
+    
+    // Calculate scale factors
+    const scaleX = displayWidth / originalWidth;
+    const scaleY = displayHeight / originalHeight;
+    
+    // Use the smaller scale to maintain aspect ratio (object-fit: cover behavior)
+    const scale = Math.max(scaleX, scaleY);
+    
+    // Calculate offset to center the scaled image
+    const scaledWidth = originalWidth * scale;
+    const scaledHeight = originalHeight * scale;
+    const offsetX = (displayWidth - scaledWidth) / 2;
+    const offsetY = (displayHeight - scaledHeight) / 2;
+    
+    // Set SVG viewBox and size
+    svg.setAttribute('viewBox', `0 0 ${originalWidth} ${originalHeight}`);
+    svg.setAttribute('width', displayWidth);
+    svg.setAttribute('height', displayHeight);
+    
+    // Scale and position annotations
+    svg.querySelectorAll('.annotation-rect').forEach(rect => {
+        const x = parseFloat(rect.getAttribute('data-x'));
+        const y = parseFloat(rect.getAttribute('data-y'));
+        const width = parseFloat(rect.getAttribute('data-width'));
+        const height = parseFloat(rect.getAttribute('data-height'));
+        
+        rect.setAttribute('x', x);
+        rect.setAttribute('y', y);
+        rect.setAttribute('width', width);
+        rect.setAttribute('height', height);
+    });
+    
+    svg.querySelectorAll('.annotation-label').forEach(text => {
+        const x = parseFloat(text.getAttribute('data-x'));
+        const y = parseFloat(text.getAttribute('data-y'));
+        
+        text.setAttribute('x', x + 2);
+        text.setAttribute('y', y + 2);
+    });
+}
+
+function loadMoreImages() {
+    // TODO: Implement pagination for images
+    alert('Pagination feature coming soon!');
+}
+</script>
+{% endblock %}
